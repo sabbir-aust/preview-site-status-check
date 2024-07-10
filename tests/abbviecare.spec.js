@@ -21,7 +21,7 @@ function readUrlsFromExcel(filePath) {
 const urls = readUrlsFromExcel('urls.xlsx');
 
 urls.forEach(({ country, url }) => {
-  test(`has title and checks status code for abbviepro ${country} URL`, async ({ page }) => {
+  test(`has title and checks status code for Abbvie Care ${country} URL`, async ({ page }) => {
     // Create an array to store URLs and status codes
     let responses = [];
     const mainUrl = url;
@@ -31,21 +31,27 @@ urls.forEach(({ country, url }) => {
     const password = 'NsgHyXb1!';
 
     // Log the initial URL hit
-    responses.push({ url: mainUrl, status: 0 });
+    //responses.push({ url: mainUrl, status: 0 });
 
     try {
       
         // Navigate to the login page
     await page.goto(mainUrl, { waitUntil: 'load' });
-    responses[0].status = 200; // Update the status after successful navigation
+    responses.push({ url: mainUrl, status: 200 });
 
     // Log responses after hitting the URL
     await logResponses(page, responses, mainUrl);
 
-    // Perform login
-    await page.fill('input[name="username"]', username);
-    await page.fill('input[name="password"]', password);
-    await page.click('button[type="submit"]');
+      // Perform login
+      try {
+        await page.fill('input[name="username"]', username); // Increase timeout if necessary
+        await page.fill('input[name="password"]', password);
+        await page.click('button[type="submit"]');
+      } catch (fillError) {
+        responses.push({ url: mainUrl, status: 404 });
+        throw new Error(`Login failed: ${fillError.message}`);
+      }
+
     // Wait for the page to fully load
     await page.waitForLoadState('networkidle');
 
@@ -62,7 +68,14 @@ urls.forEach(({ country, url }) => {
     await saveResponsesToExcel(responses, country, 'Care');
 
     } catch (error) {
-      await logFailure(country, url, error.message, 'Abbvie Care');
+      // Log failure to a separate Excel file
+      const statusCode = error.message.includes('Timeout' || 'Test timeout') ? 404 : (responses.length > 0 ? responses[responses.length - 1].status : 404);
+      await logFailure(country, mainUrl, error.message, statusCode, 'Abbvie Care');
+    } finally {
+      // If no entries were recorded, log an unknown status entry
+      if (responses.length === 0) {
+        await logFailure(country, mainUrl, 'No response recorded', 404, 'Abbvie Care');
+      }
     }
   });
 });

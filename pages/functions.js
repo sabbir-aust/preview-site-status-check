@@ -13,19 +13,20 @@ async function logResponses(page, responses, mainUrl) {
     const status = response.status();
     console.log(`URL: ${url} - Status: ${status}`);
 
-    if (url === mainUrl && (status === 307 || status === 429 || status === 302)) {
-      const existingIndex = responses.findIndex(entry => entry.url === mainUrl);
-      if (existingIndex !== -1) {
-        responses[existingIndex].status = 200;
-      } else {
-        responses.push({ url, status: 200 });
+    let statusCode = status;
+    try {
+      const responseBody = await response.json();
+      if (responseBody && responseBody.data && responseBody.data.code && responseBody.data.code !== 200) {
+        statusCode = responseBody.data.code;
       }
-    } else {
-      responses.push({ url, status });
+    } catch (e) {
+      // Not a JSON response or failed to parse, ignore the error
     }
 
-    if (url === mainUrl && status !== 302 && status !== 429 && status !== 404) {
-      expect(status).toBe(200);
+    responses.push({ url, status: statusCode });
+
+    if (url === mainUrl && statusCode !== 302 && statusCode !== 429 && statusCode !== 404) {
+      expect(statusCode).toBe(200);
     }
   });
 }
@@ -46,7 +47,7 @@ async function saveResponsesToExcel(responses, sheetName, fileName) {
       filePath = './report/tora_responses.xlsx';
       break;
     case 'TOTP':
-      filePath = './report/tora_responses.xlsx';
+      filePath = './report/totp_responses.xlsx';
       break;  
     case 'Care':
       filePath = './report/abbviecare_responses.xlsx';
@@ -107,9 +108,7 @@ async function saveResponsesToExcel(responses, sheetName, fileName) {
   console.log('Data successfully written to file.');
 }
 
-
-
-async function logFailure(country, url, errorMessage, projectName) {
+async function logFailure(country, url, errorMessage, statusCode, projectName) {
   const filePath = './error_log_report/failed_cases.xlsx';
   const sheetName = projectName;
 
@@ -133,7 +132,7 @@ async function logFailure(country, url, errorMessage, projectName) {
     console.log(`Sheet "${sheetName}" does not exist. It will be created.`);
   }
 
-  const newFailure = { country, url, errorMessage, timestamp: new Date().toISOString() };
+  const newFailure = { country, url, errorMessage, statusCode, timestamp: new Date().toISOString() };
   existingData.push(newFailure);
 
   const ws = xlsx.utils.json_to_sheet(existingData);
